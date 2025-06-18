@@ -23,4 +23,21 @@ def create_graph(df):
             dist = geodesic((node_i[1], node_i[2]), (node_j[1], node_j[2])).km
             G.add_edge(int(node_i[0]), int(node_j[0]), weight=round(dist, 2))
     return G
+    
+def build_distance_matrix(G):
+    """Returns a distance matrix using the edge weights from the graph G"""
+    nodes = list(G.nodes)
+    size = len(nodes)
+    dist_matrix = [[0]*size for _ in range(size)]
+
+    for i in range(size):
+        for j in range(size):
+            if i != j:
+                try:
+                    dist = G[nodes[i]][nodes[j]]['weight']
+                except KeyError:
+                    dist = float('inf')  # if no direct edge
+                dist_matrix[i][j] = dist
+    return dist_matrix, nodes  # return node id mapping too
+
 
