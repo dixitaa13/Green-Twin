@@ -1,0 +1,11 @@
+simpy
+networkx
+ortools
+pandas
+numpy
+streamlit
+plotly
+folium
+geopy
+requests
+python-dotenv
