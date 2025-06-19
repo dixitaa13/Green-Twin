@@ -1,6 +1,7 @@
 import pandas as pd
 import networkx as nx
 from geopy.distance import geodesic
+import random
 
 def load_network(csv_path="data/network.csv"):
     df = pd.read_csv(csv_path)
@@ -39,5 +40,18 @@ def build_distance_matrix(G):
                     dist = float('inf')  # if no direct edge
                 dist_matrix[i][j] = dist
     return dist_matrix, nodes  # return node id mapping too
+
+def get_carbon_intensity_factor(vehicle_type):
+    # Mock: assume clean grid or dirty grid affects EV only
+    if vehicle_type == "EV":
+        return random.uniform(1.0, 1.3)  # 30% slower if grid is dirty
+    return 1.0
+
+def get_traffic_factor():
+    return random.uniform(0.8, 1.5)  # slower/faster traffic
+
+def get_weather_factor():
+    return random.uniform(0.9, 1.2)  # normal to mild slowdown
+
 
 
