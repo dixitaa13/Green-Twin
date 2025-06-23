@@ -6,6 +6,7 @@ from simulation.sim_core import multi_truck_simulation
 import pydeck as pdk
 from visuals.charts import build_truck_segments, get_positions_at_time
 
+
 def main():
     st.set_page_config(page_title="GreenTwin Prototype", layout="wide")
     st.title("GreenTwin: Sustainable Logistics Prototype")
@@ -20,9 +21,19 @@ def main():
 
     fig = plot_network(df, G)
     st.plotly_chart(fig, use_container_width=True)
+    
+    with st.sidebar:
+        st.title("📦 GreenTwin")
+        st.markdown("""
+        - 🛰️ Simulates low-carbon logistics
+        - 🚚 Tracks multiple vehicle types
+        - 🌦️ Uses real-time carbon, traffic & weather data
+        - 🧠 Powered by AI & digital twin modeling
+        """)
 
     # -------------------------------
     st.header("Step 3: Route Optimization + Digital Twin Simulation")
+    
     # -------------------------------
 
     if st.button("Compute Optimal Route and Simulate"):
@@ -53,6 +64,27 @@ def main():
 
         st.success(f"Total Simulation Time (Latest Arrival): {total_time} hours")
         st.dataframe(log_df)
+        
+        st.download_button(
+            label="Download Simulation Log as CSV",
+            data=log_df.to_csv(index=False).encode("utf-8"),
+            file_name="simulation_log.csv",
+            mime="text/csv"
+        )
+        
+        st.subheader("🔍 Summary Insights")
+
+        total_deliveries = log_df["Delivered"].sum()
+        ev_trips = log_df[log_df["Type"] == "EV"].shape[0]
+        diesel_trips = log_df[log_df["Type"] == "Diesel"].shape[0]
+        avg_adjusted_time = round(log_df["Adjusted Travel Time (hr)"].mean(), 2)
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Deliveries", int(total_deliveries))
+        col2.metric("EV Trips", ev_trips)
+        col3.metric("Diesel Trips", diesel_trips)
+        col4.metric("Avg Adjusted Travel Time (hr)", avg_adjusted_time)
+
 
         # Show per-truck completion times
         # e.g., bar chart of final arrival by truck

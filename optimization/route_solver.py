@@ -1,5 +1,7 @@
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
+import itertools
+import numpy as np
 
 def solve_tsp(distance_matrix):
     size = len(distance_matrix)
@@ -32,4 +34,5 @@ def solve_tsp(distance_matrix):
         index = solution.Value(routing.NextVar(index))
     route.append(manager.IndexToNode(index))
     return route
+    
 
