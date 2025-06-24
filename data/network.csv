@@ -1,6 +1,17 @@
-id,name,type,latitude,longitude
-0,Main DC,dc,28.6280,77.2195
-1,Store A,store,28.7041,77.1025
-2,Store B,store,28.5355,77.3910
-3,Store C,store,28.4595,77.0266
-4,Store D,store,28.4089,77.3178
+node_id,name,type,lat,lon,country
+DC001,Los Angeles DC,dc,34.0522,-118.2437,USA
+S001,New York Store,store,40.7128,-74.0060,USA
+S002,Chicago Store,store,41.8781,-87.6298,USA
+S003,Toronto Store,store,43.6532,-79.3832,Canada
+DC002,London DC,dc,51.5074,-0.1278,UK
+S004,Paris Store,store,48.8566,2.3522,France
+S005,Berlin Store,store,52.5200,13.4050,Germany
+S006,Rome Store,store,41.9028,12.4964,Italy
+DC003,Delhi DC,dc,28.7041,77.1025,India
+S007,Mumbai Store,store,19.0760,72.8777,India
+S008,Bengaluru Store,store,12.9716,77.5946,India
+S009,Dubai Store,store,25.2769,55.2962,UAE
+DC004,Tokyo DC,dc,35.6895,139.6917,Japan
+S010,Osaka Store,store,34.6937,135.5023,Japan
+S011,Sydney Store,store,-33.8688,151.2093,Australia
+S012,Melbourne Store,store,-37.8136,144.9631,Australia
