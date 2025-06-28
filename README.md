@@ -9,3 +9,4 @@ This repository contains the prototype for GreenTwin, an AI-driven digital twin 
    python3 -m venv venv
    source venv/bin/activate
 
+

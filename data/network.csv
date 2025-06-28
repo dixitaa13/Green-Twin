@@ -1,17 +1,88 @@
 node_id,name,type,lat,lon,country
-DC001,Los Angeles DC,dc,34.0522,-118.2437,USA
-S001,New York Store,store,40.7128,-74.0060,USA
-S002,Chicago Store,store,41.8781,-87.6298,USA
-S003,Toronto Store,store,43.6532,-79.3832,Canada
-DC002,London DC,dc,51.5074,-0.1278,UK
-S004,Paris Store,store,48.8566,2.3522,France
-S005,Berlin Store,store,52.5200,13.4050,Germany
-S006,Rome Store,store,41.9028,12.4964,Italy
-DC003,Delhi DC,dc,28.7041,77.1025,India
-S007,Mumbai Store,store,19.0760,72.8777,India
-S008,Bengaluru Store,store,12.9716,77.5946,India
-S009,Dubai Store,store,25.2769,55.2962,UAE
-DC004,Tokyo DC,dc,35.6895,139.6917,Japan
-S010,Osaka Store,store,34.6937,135.5023,Japan
-S011,Sydney Store,store,-33.8688,151.2093,Australia
-S012,Melbourne Store,store,-37.8136,144.9631,Australia
+DC-IN-01,Delhi DC,dc,28.7041,77.1025,India
+S-IN-01,Mumbai Store,store,19.0760,72.8777,India
+S-IN-02,Bengaluru Store,store,12.9716,77.5946,India
+S-IN-03,Chennai Store,store,13.0827,80.2707,India
+S-IN-04,Kolkata Store,store,22.5726,88.3639,India
+S-IN-05,Hyderabad Store,store,17.3850,78.4867,India
+S-IN-06,Ahmedabad Store,store,23.0225,72.5714,India
+S-IN-07,Pune Store,store,18.5204,73.8567,India
+S-IN-08,Jaipur Store,store,26.9124,75.7873,India
+S-IN-09,Lucknow Store,store,26.8467,80.9462,India
+S-IN-10,Kanpur Store,store,26.4499,80.3319,India
+S-IN-11,Nagpur Store,store,21.1458,79.0882,India
+S-IN-12,Indore Store,store,22.7196,75.8577,India
+S-IN-13,Thane Store,store,19.2183,72.9781,India
+S-IN-14,Bhopal Store,store,23.2599,77.4126,India
+S-IN-15,Visakhapatnam Store,store,17.6868,83.2185,India
+S-IN-16,Patna Store,store,25.5941,85.1376,India
+S-IN-17,Vadodara Store,store,22.3072,73.1812,India
+S-IN-18,Ghaziabad Store,store,28.6692,77.4538,India
+S-IN-19,Surat Store,store,21.1702,72.8311,India
+S-IN-20,Agra Store,store,27.1767,78.0078,India
+
+DC-US-01,Los Angeles DC,dc,34.0522,-118.2437,USA
+S-US-01,New York Store,store,40.7128,-74.0060,USA
+S-US-02,Chicago Store,store,41.8781,-87.6298,USA
+S-US-03,Houston Store,store,29.7604,-95.3698,USA
+S-US-04,Phoenix Store,store,33.4484,-112.0740,USA
+S-US-05,Philadelphia Store,store,39.9526,-75.1652,USA
+S-US-06,San Antonio Store,store,29.4241,-98.4936,USA
+S-US-07,San Diego Store,store,32.7157,-117.1611,USA
+S-US-08,Dallas Store,store,32.7767,-96.7970,USA
+S-US-09,San Jose Store,store,37.3382,-121.8863,USA
+S-US-10,Austin Store,store,30.2672,-97.7431,USA
+S-US-11,Jacksonville Store,store,30.3322,-81.6557,USA
+S-US-12,Fort Worth Store,store,32.7555,-97.3308,USA
+S-US-13,Columbus Store,store,39.9612,-82.9988,USA
+S-US-14,Charlotte Store,store,35.2271,-80.8431,USA
+S-US-15,Indianapolis Store,store,39.7684,-86.1581,USA
+S-US-16,Seattle Store,store,47.6062,-122.3321,USA
+S-US-17,Denver Store,store,39.7392,-104.9903,USA
+S-US-18,Washington DC Store,store,38.9072,-77.0369,USA
+S-US-19,Boston Store,store,42.3601,-71.0589,USA
+S-US-20,El Paso Store,store,31.7619,-106.4850,USA
+
+DC-UK-01,London DC,dc,51.5074,-0.1278,UK
+S-UK-01,Birmingham Store,store,52.4862,-1.8904,UK
+S-UK-02,Manchester Store,store,53.4808,-2.2426,UK
+S-UK-03,Glasgow Store,store,55.8642,-4.2518,UK
+S-UK-04,Liverpool Store,store,53.4084,-2.9916,UK
+S-UK-05,Bristol Store,store,51.4545,-2.5879,UK
+S-UK-06,Sheffield Store,store,53.3811,-1.4701,UK
+S-UK-07,Leeds Store,store,53.8008,-1.5491,UK
+S-UK-08,Edinburgh Store,store,55.9533,-3.1883,UK
+S-UK-09,Leicester Store,store,52.6369,-1.1398,UK
+S-UK-10,Coventry Store,store,52.4081,-1.5120,UK
+S-UK-11,Cardiff Store,store,51.4816,-3.1791,UK
+S-UK-12,Belfast Store,store,54.5973,-5.9301,UK
+S-UK-13,Bradford Store,store,53.7960,-1.7505,UK
+S-UK-14,Brighton Store,store,50.8225,-0.1372,UK
+S-UK-15,Plymouth Store,store,50.3755,-4.1427,UK
+S-UK-16,Wolverhampton Store,store,52.5885,-2.1287,UK
+S-UK-17,Southampton Store,store,50.9097,-1.4044,UK
+S-UK-18,Reading Store,store,51.4543,-0.9781,UK
+S-UK-19,Kingston upon Hull Store,store,53.7679,-0.3686,UK
+S-UK-20,Derby Store,store,52.9225,-1.4746,UK
+
+DC-AU-01,Sydney DC,dc,-33.8688,151.2093,Australia
+S-AU-01,Melbourne Store,store,-37.8136,144.9631,Australia
+S-AU-02,Brisbane Store,store,-27.4698,153.0251,Australia
+S-AU-03,Perth Store,store,-31.9505,115.8605,Australia
+S-AU-04,Adelaide Store,store,-34.9285,138.6007,Australia
+S-AU-05,Gold Coast Store,store,-28.0167,153.4000,Australia
+S-AU-06,Newcastle Store,store,-32.9283,151.7817,Australia
+S-AU-07,Canberra Store,store,-35.2809,149.1300,Australia
+S-AU-08,Sunshine Coast Store,store,-26.6500,153.0667,Australia
+S-AU-09,Wollongong Store,store,-34.4278,150.8931,Australia
+S-AU-10,Hobart Store,store,-42.8821,147.3272,Australia
+S-AU-11,Geelong Store,store,-38.1499,144.3617,Australia
+S-AU-12,Townsville Store,store,-19.2583,146.8169,Australia
+S-AU-13,Cairns Store,store,-16.9203,145.7708,Australia
+S-AU-14,Toowoomba Store,store,-27.5612,151.9575,Australia
+S-AU-15,Darwin Store,store,-12.4634,130.8456,Australia
+S-AU-16,Ballarat Store,store,-37.5622,143.8503,Australia
+S-AU-17,Bendigo Store,store,-36.7570,144.2796,Australia
+S-AU-18,Launceston Store,store,-41.4332,147.1436,Australia
+S-AU-19,Albury-Wodonga Store,store,-36.0734,146.9137,Australia
+S-AU-20,Maitland Store,store,-32.7333,151.5500,Australia
