@@ -5,16 +5,59 @@ import pydeck as pdk
 from datetime import datetime, timedelta
 
 # Import custom modules
-# Ensure calculate_zoom_level is explicitly imported here
 from utils.api_helpers import load_network, create_graph, build_distance_matrix, get_mock_traffic_factor, get_mock_weather_factor, get_mock_carbon_intensity
 from optimization.route_solver import solve_advanced_tsp
 from simulation.sim_core import multi_truck_simulation
-from visuals.charts import plot_network_pydeck, get_positions_at_time, calculate_bounding_box, calculate_zoom_level # ALL NECESSARY IMPORTS HERE
+from visuals.charts import plot_network_pydeck, get_positions_at_time, calculate_bounding_box, highlight_impacted_segments # highlight_impacted_segments now imported
+
+# --- Function moved from visuals/charts.py to app.py for NameError fix ---
+# This function is used by PyDeck to determine zoom level
+def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
+    """
+    Estimates a PyDeck zoom level based on a bounding box.
+    This is a simplified heuristic and might need fine-tuning.
+    Moved to app.py to resolve NameError.
+    """
+    min_lat, max_lat, min_lon, max_lon = bbox
+    
+    # Add a small buffer to the bounding box
+    lat_buffer = (max_lat - min_lat) * 0.1
+    lon_buffer = (max_lon - min_lon) * 0.1
+    min_lat -= lat_buffer
+    max_lat += lat_buffer
+    min_lon -= lon_buffer
+    max_lon += lon_buffer
+
+    # Handle single point or very small bounds to avoid division by zero or extreme zoom
+    if min_lat == max_lat: max_lat += 0.001
+    if min_lon == max_lon: min_lon += 0.001
+
+    # Approximate Earth's circumference at equator in meters
+    EARTH_CIRCUMFERENCE = 40075017 # meters
+
+    # Calculate meters per pixel at zoom 0
+    # From Mapbox GL JS documentation, meters per pixel at zoom 0 (equator) is approx 78271.517
+    # Or, 2 * pi * 6378137 / 256 (where 256 is tile size)
+    METERS_PER_PIXEL_ZOOM_0 = 78271.517
+
+    # Calculate approximate width/height in meters
+    width_meters = np.cos(np.radians((min_lat + max_lat) / 2)) * EARTH_CIRCUMFERENCE * (max_lon - min_lon) / 360
+    height_meters = EARTH_CIRCUMFERENCE * (max_lat - min_lat) / 360
+
+    # Calculate zoom based on the larger dimension
+    if width_meters > height_meters:
+        zoom = np.log2(METERS_PER_PIXEL_ZOOM_0 * map_width_px / width_meters)
+    else:
+        zoom = np.log2(METERS_PER_PIXEL_ZOOM_0 * map_height_px / height_meters)
+    
+    # Clamp zoom to a reasonable range
+    return max(0.5, min(zoom, 10)) # Max zoom 10 to prevent over-zooming on small clusters
+
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
     page_title="GreenTwin: Sustainable Logistics Digital Twin",
-    layout="wide", # Use wide layout for more space
+    layout="wide",
     initial_sidebar_state="expanded",
 )
 
@@ -29,7 +72,7 @@ def load_all_initial_data():
         return full_network_df, full_demand_map
     except FileNotFoundError:
         st.error("Error: 'network.csv' or 'demand.csv' not found in the 'data/' directory. Please ensure these files are in the 'data/' folder.")
-        st.stop() # Stop the app if crucial files are missing
+        st.stop()
 
 # Load all data once at the start
 full_network_df, full_demand_map = load_all_initial_data()
@@ -50,7 +93,8 @@ if 'simulation_time_slider' not in st.session_state:
     st.session_state.simulation_time_slider = 0.0
 if 'selected_country' not in st.session_state:
     st.session_state.selected_country = full_network_df['country'].unique()[0] if not full_network_df.empty else 'USA'
-
+if 'scenario_results' not in st.session_state:
+    st.session_state.scenario_results = {} # Stores results for comparison scenarios
 
 # --- Sidebar Navigation ---
 st.sidebar.title("GreenTwin Dashboard")
@@ -69,7 +113,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.selectbox(
     "Navigate Sections",
-    ("📊 Overview", "🌐 Network & Optimization", "🚚 Simulation & Animation", "⚙️ Configuration", "📜 Raw Logs"),
+    ("📊 Overview", "🌐 Network & Optimization", "🚚 Simulation & Animation", "⚖️ Scenario Comparison", "⚙️ Configuration", "📜 Raw Logs"), # Added new page
     key="main_nav_selector"
 )
 
@@ -78,13 +122,42 @@ st.sidebar.info("Developed for a National Level Hackathon")
 
 # --- Filter Data Based on Selected Country ---
 network_df = full_network_df[full_network_df['country'] == st.session_state.selected_country].copy()
-# Filter demand map to include only nodes present in the current country's network_df
 country_node_ids = network_df['node_id'].tolist()
 demand_map_filtered = {k: v for k, v in full_demand_map.items() if k in country_node_ids}
 
 G = create_graph(network_df)
 distance_matrix, node_id_to_index, index_to_node_id = build_distance_matrix(G)
 
+# --- Function to run a simulation (re-usable for scenarios) ---
+def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, demand, trucks_cfg, scenario_name):
+    with st.spinner(f"Running simulation for '{scenario_name}'..."):
+        sim_results = multi_truck_simulation(
+            route,
+            dist_matrix,
+            node_idx_map,
+            idx_node_map,
+            demand,
+            trucks_cfg,
+            get_mock_traffic_factor,
+            get_mock_weather_factor,
+            get_mock_carbon_intensity
+        )
+        
+        # Access 'log' key, which is a list of dicts, then convert to DataFrame for sum
+        log_df_for_calc = pd.DataFrame(sim_results['log'])
+        
+        # Ensure values are always float, even if log is empty
+        total_emissions = float(log_df_for_calc["emissions_kg"].sum()) if not log_df_for_calc.empty else 0.0
+        total_sim_time = float(sim_results['max_simulation_time']) if sim_results['max_simulation_time'] is not None else 0.0
+
+        st.session_state.scenario_results[scenario_name] = {
+            'total_emissions_kg': total_emissions,
+            'total_sim_time_hr': total_sim_time,
+            'log': sim_results['log'], # Still store raw list for download etc.
+            'segments': sim_results['segments'],
+            'truck_config': trucks_cfg # Store the config used for this scenario
+        }
+        return sim_results # Return full results for current active view
 
 # --- Main Content Area ---
 st.title(page)
@@ -134,16 +207,16 @@ if page == "📊 Overview":
         * **Diesel Emissions are Fixed:** Diesel trucks have a constant emission rate per kilometer.
         * **Quantifiable Impact:** This allows you to immediately see the environmental cost of different fleet mixes and even implicitly, how operating EVs during different grid conditions could change overall emissions.
 
-        **Try this:** Go to "⚙️ Configuration", adjust an EV's "EV Consumption (kWh/km)" or a Diesel truck's "Emissions (kg CO2/km)", then re-run the simulation in the '🚚 Simulation & Animation' section and observe the impact on total emissions! You can also switch countries to see how different geographies with potentially different simulated grid intensities might affect results.
+        **To truly understand the impact:** Visit the "⚖️ Scenario Comparison" page to run and compare different fleet configurations and see their impact on total emissions and time!
         """)
 
         st.markdown("""
         **Problem Solved & Innovation:**
-        - **Real-world Dynamic Simulation:** Simulates delivery operations accounting for live traffic, weather, and crucial grid carbon intensity for various global locations.
-        - **Optimized Routing:** Utilizes advanced algorithms (conceptually OR-Tools) for complex, multi-stop route optimization, providing efficient and realistic paths.
-        - **Sustainability Focus:** Highlights the impact of vehicle types (EV vs. Diesel) and carbon-aware scheduling on environmental footprint by quantifying CO2 emissions.
-        - **Interactive Decision Support:** Allows stakeholders to visualize "what-if" scenarios and gain actionable insights for greener, more efficient logistics.
-        - **Scalable Architecture:** Designed with modular components, ready for integration with streaming data and larger networks.
+        -   **Real-world Dynamic Simulation:** Simulates delivery operations accounting for live traffic, weather, and crucial grid carbon intensity for various global locations.
+        -   **Optimized Routing:** Utilizes advanced algorithms (conceptually OR-Tools) for complex, multi-stop route optimization, providing efficient and realistic paths.
+        -   **Sustainability Focus:** Highlights the impact of vehicle types (EV vs. Diesel) and carbon-aware scheduling on environmental footprint by quantifying CO2 emissions.
+        -   **Interactive Decision Support:** Allows stakeholders to visualize "what-if" scenarios and gain actionable insights for greener, more efficient logistics.
+        -   **Scalable Architecture:** Designed with modular components, ready for integration with streaming data and larger networks.
         """)
     else:
         st.info(f"Run a simulation for {st.session_state.selected_country} in the '🚚 Simulation & Animation' section to see insights.")
@@ -172,10 +245,15 @@ elif page == "🌐 Network & Optimization":
                     st.error("Route computation failed or resulted in an empty route. Please check your data and solver logic.")
                 else:
                     st.success("Optimal route computed!")
+    
+    # Store the computed route for scenarios
+    # This should be part of a distinct scenario creation step if you want to compare
+    # routes from different optimization runs, not just fleet configs.
+    # For now, we'll store the *current* route when simulation is run.
+
 
     st.subheader(f"Supply Chain Network Map for {st.session_state.selected_country}")
     if not network_df.empty:
-        # Pass the calculated bounding box for the current country
         bbox = calculate_bounding_box(network_df)
         st.pydeck_chart(plot_network_pydeck(network_df, st.session_state.optimized_route, bbox))
     else:
@@ -193,26 +271,25 @@ elif page == "🚚 Simulation & Animation":
         if not st.session_state.optimized_route or len(st.session_state.optimized_route) < 2:
             st.warning("Please compute an optimal route with at least two nodes first in the 'Network & Optimization' section.")
         else:
-            with st.spinner("Running simulation with real-time factors..."):
-                sim_results = multi_truck_simulation(
-                    st.session_state.optimized_route,
-                    distance_matrix,
-                    node_id_to_index,
-                    index_to_node_id,
-                    demand_map_filtered, # Use filtered demand map
-                    st.session_state.trucks_config,
-                    get_mock_traffic_factor,
-                    get_mock_weather_factor,
-                    get_mock_carbon_intensity
-                )
-                st.session_state.simulation_results = sim_results
-                st.session_state.max_simulation_time = sim_results['max_simulation_time']
-                st.session_state.simulation_time_slider = 0.0
-                st.success("Simulation complete!")
+            # We are now calling run_simulation_and_store
+            current_sim_results = run_simulation_and_store(
+                st.session_state.optimized_route,
+                distance_matrix,
+                node_id_to_index,
+                index_to_node_id,
+                demand_map_filtered,
+                st.session_state.trucks_config,
+                f"Current Fleet ({st.session_state.selected_country})" # Name for this scenario
+            )
+            st.session_state.simulation_results = current_sim_results
+            st.session_state.max_simulation_time = current_sim_results['max_simulation_time']
+            st.session_state.simulation_time_slider = 0.0
+            st.success("Simulation complete!")
+
 
     if st.session_state.simulation_results and not st.session_state.simulation_results['segments'].empty:
         segments_for_animation = st.session_state.simulation_results['segments']
-        log_df_sim = pd.DataFrame(st.session_state.simulation_results['log']) # For current factors lookup
+        log_df_sim = pd.DataFrame(st.session_state.simulation_results['log'])
 
         st.session_state.simulation_time_slider = st.slider(
             "Simulation Time (hours)",
@@ -236,7 +313,6 @@ elif page == "🚚 Simulation & Animation":
                 
                 if not current_segment_info.empty:
                     seg_data = current_segment_info.iloc[0]
-                    # Make output more readable regarding carbon factor
                     carbon_text = f"Carbon Intensity: `{seg_data['carbon_factor']:.2f} gCO2/kWh`" if truck_pos['type'] == 'EV' else "N/A (Diesel)"
                     st.write(f"**{truck_pos['id']} ({truck_pos['type']})**: Traffic: `{seg_data['traffic_factor']:.2f}x` | Weather: `{seg_data['weather_condition']} ({seg_data['weather_factor']:.2f}x)` | {carbon_text}")
                 else:
@@ -245,14 +321,12 @@ elif page == "🚚 Simulation & Animation":
             st.info("No trucks currently moving. Adjust slider or run simulation.")
         st.markdown("---")
 
-        # Calculate bounding box for current country for Pydeck view
         bbox = calculate_bounding_box(network_df)
         
-        # Pydeck Layers for animation
         view_state = pdk.ViewState(
-            latitude=(bbox[0] + bbox[1]) / 2, # Center lat
-            longitude=(bbox[2] + bbox[3]) / 2, # Center lon
-            zoom=calculate_zoom_level(bbox), # Dynamic zoom
+            latitude=(bbox[0] + bbox[1]) / 2,
+            longitude=(bbox[2] + bbox[3]) / 2,
+            zoom=calculate_zoom_level(bbox),
             pitch=45,
         )
 
@@ -283,41 +357,9 @@ elif page == "🚚 Simulation & Animation":
                 tooltip={"text": "Truck: {id}\nType: {type}"}
             )
 
-        segment_layers = []
-        if not segments_for_animation.empty:
-            for truck_config in st.session_state.trucks_config:
-                truck_segments_data = segments_for_animation[segments_for_animation['truckId'] == truck_config['id']]
-                
-                active_segments_data = []
-                for idx, seg in truck_segments_data.iterrows():
-                    if seg['startTime'] <= st.session_state.simulation_time_slider:
-                        if st.session_state.simulation_time_slider < seg['endTime']:
-                            progress = (st.session_state.simulation_time_slider - seg['startTime']) / (seg['endTime'] - seg['startTime'])
-                            current_lon = seg['coordinates'][0][0] + (seg['coordinates'][1][0] - seg['coordinates'][0][0]) * progress
-                            current_lat = seg['coordinates'][0][1] + (seg['coordinates'][1][1] - seg['coordinates'][0][1]) * progress
-                            active_segments_data.append({
-                                'path': [seg['coordinates'][0], [current_lon, current_lat]],
-                                'color': truck_config['color'] + [200],
-                            })
-                        else:
-                            active_segments_data.append({
-                                'path': seg['coordinates'],
-                                'color': truck_config['color'] + [200],
-                            })
-                
-                if active_segments_data:
-                    segment_layers.append(
-                        pdk.Layer(
-                            'PathLayer',
-                            data=active_segments_data,
-                            get_path='path',
-                            get_color='color',
-                            get_width=5,
-                            width_scale=1,
-                            width_min_pixels=2,
-                            pickable=True,
-                        )
-                    )
+        # Get the highlighted segments layer
+        # Correctly pass segments_for_animation (which is sim_results['segments'])
+        highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim) # Pass log_df_sim here
 
         osm_tile_layer = pdk.Layer(
             "BitmapLayer",
@@ -332,9 +374,10 @@ elif page == "🚚 Simulation & Animation":
         )
 
         all_layers = [osm_tile_layer, node_layer]
+        if highlight_layer: # Add highlight layer first so it's under trucks but above base map
+            all_layers.append(highlight_layer)
         if truck_layer:
             all_layers.append(truck_layer)
-        all_layers.extend(segment_layers)
 
         st.pydeck_chart(pdk.Deck(
             initial_view_state=view_state,
@@ -343,6 +386,100 @@ elif page == "🚚 Simulation & Animation":
         ))
     else:
         st.info(f"Run the simulation for {st.session_state.selected_country} to see the animation.")
+
+elif page == "⚖️ Scenario Comparison": # NEW PAGE
+    st.header("Scenario Comparison: Fleet Optimization & Sustainability")
+    st.markdown("""
+    Compare the overall impact of different fleet configurations or operational strategies on total emissions and simulation time.
+    Use the '⚙️ Configuration' page to adjust truck settings, then run simulations from the '🚚 Simulation & Animation' page.
+    Each successful simulation will be stored here for comparison.
+    """)
+
+    if not st.session_state.scenario_results:
+        st.info("No scenarios to compare yet. Run at least one simulation from the '🚚 Simulation & Animation' page.")
+    else:
+        scenario_names = list(st.session_state.scenario_results.keys())
+        st.subheader("Stored Scenarios")
+        st.dataframe(pd.DataFrame([
+            {'Scenario': name,
+             'Total Emissions (kg CO2)': f"{data['total_emissions_kg']:.2f}",
+             'Total Time (hr)': f"{data['total_sim_time_hr']:.2f}",
+             'Fleet Config': ', '.join([f"{t['id']} ({t['type']})" for t in data['truck_config']])
+            } for name, data in st.session_state.scenario_results.items()
+        ]), use_container_width=True)
+
+        st.subheader("Compare Scenarios Visually")
+        if len(scenario_names) >= 2:
+            col1, col2 = st.columns(2)
+            scenario_1_name = col1.selectbox("Select Scenario 1", scenario_names, key="scenario_1_select")
+            scenario_2_name = col2.selectbox("Select Scenario 2", scenario_names, key="scenario_2_select")
+
+            if scenario_1_name and scenario_2_name:
+                s1_data = st.session_state.scenario_results[scenario_1_name]
+                s2_data = st.session_state.scenario_results[scenario_2_name]
+
+                comparison_df = pd.DataFrame({
+                    'Metric': ['Total Emissions (kg CO2)', 'Total Time (hr)'],
+                    scenario_1_name: [s1_data['total_emissions_kg'], s1_data['total_sim_time_hr']],
+                    scenario_2_name: [s2_data['total_emissions_kg'], s2_data['total_sim_time_hr']]
+                }).set_index('Metric')
+
+                st.dataframe(comparison_df)
+
+                try:
+                    import plotly.graph_objects as go
+                    from plotly.subplots import make_subplots
+
+                    fig = make_subplots(rows=1, cols=2, subplot_titles=("Total Emissions (kg CO2)", "Total Time (hr)"))
+
+                    fig.add_trace(go.Bar(
+                        name=scenario_1_name,
+                        x=['Emissions'],
+                        y=[s1_data['total_emissions_kg']],
+                        marker_color='red'
+                    ), row=1, col=1)
+                    fig.add_trace(go.Bar(
+                        name=scenario_2_name,
+                        x=['Emissions'],
+                        y=[s2_data['total_emissions_kg']],
+                        marker_color='green' if s2_data['total_emissions_kg'] < s1_data['total_emissions_kg'] else 'orange'
+                    ), row=1, col=1)
+
+                    fig.add_trace(go.Bar(
+                        name=scenario_1_name,
+                        x=['Time'],
+                        y=[s1_data['total_sim_time_hr']],
+                        marker_color='red',
+                        showlegend=False
+                    ), row=1, col=2)
+                    fig.add_trace(go.Bar(
+                        name=scenario_2_name,
+                        x=['Time'],
+                        y=[s2_data['total_sim_time_hr']],
+                        marker_color='green' if s2_data['total_sim_time_hr'] < s1_data['total_sim_time_hr'] else 'orange',
+                        showlegend=False
+                    ), row=1, col=2)
+                    
+                    fig.update_layout(title_text=f"Comparison: {scenario_1_name} vs {scenario_2_name}",
+                                      barmode='group',
+                                      height=400,
+                                      xaxis={'categoryorder':'total ascending'},
+                                      plot_bgcolor='#1a1a1a',
+                                      paper_bgcolor='#0A0A0A',
+                                      font_color='#FAFAFA'
+                                      )
+                    fig.update_xaxes(showgrid=False)
+                    fig.update_yaxes(showgrid=True, gridcolor='#333333')
+
+                    st.plotly_chart(fig, use_container_width=True)
+                except ImportError:
+                    st.warning("Install `plotly` to visualize scenario comparisons: `pip install plotly`")
+        elif len(scenario_names) == 1:
+            st.info("Add another simulation to compare scenarios.")
+        
+        if st.button("Clear All Scenarios", key="clear_scenarios_btn"):
+            st.session_state.scenario_results = {}
+            st.rerun()
 
 
 elif page == "⚙️ Configuration":
@@ -368,7 +505,7 @@ elif page == "⚙️ Configuration":
                 min_value=0.0, max_value=1.0, value=truck.get('emission_rate_kg_per_km', default_emission_rate),
                 step=0.01,
                 format="%.2f",
-                help="Direct CO2 emissions per km for Diesel. For EV, this represents inherent vehicle efficiency for converting grid carbon intensity.",
+                help="Direct CO2 emissions per km for Diesel. For EV, this represents inherent vehicle efficiency for converting grid carbon intensity (if consumption rate is high).",
                 key=f"truck_emissions_{i}"
             )
         
@@ -396,11 +533,7 @@ elif page == "⚙️ Configuration":
 
     st.subheader("API Key & Data Sources (Mocked for Demo)")
     st.markdown("""
-    In a production environment, you would configure actual API keys for:
-    - **Google Maps Directions API:** For accurate travel times and traffic data.
-    - **OpenWeatherMap API:** For real-time weather conditions.
-    - **ElectricityMap / WattTime API:** For grid carbon intensity at specific locations/times for EV optimization.
-    
+    In a production environment, actual API keys for real-time data would be configured.
     For this hackathon prototype, all external API calls are **mocked** to ensure functionality without requiring live keys. This demonstrates the conceptual integration.
     """)
 

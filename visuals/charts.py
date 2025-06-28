@@ -8,7 +8,7 @@ def calculate_bounding_box(network_df):
     for a given set of nodes.
     """
     if network_df.empty:
-        return (0, 0, 0, 0) # Default if no data
+        return (0, 0, 0, 0)
     
     min_lat = network_df['lat'].min()
     max_lat = network_df['lat'].max()
@@ -24,7 +24,6 @@ def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
     """
     min_lat, max_lat, min_lon, max_lon = bbox
     
-    # Add a small buffer to the bounding box
     lat_buffer = (max_lat - min_lat) * 0.1
     lon_buffer = (max_lon - min_lon) * 0.1
     min_lat -= lat_buffer
@@ -32,30 +31,21 @@ def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
     min_lon -= lon_buffer
     max_lon += lon_buffer
 
-    # Handle single point or very small bounds to avoid division by zero or extreme zoom
     if min_lat == max_lat: max_lat += 0.001
     if min_lon == max_lon: max_lon += 0.001
 
-    # Approximate Earth's circumference at equator in meters
     EARTH_CIRCUMFERENCE = 40075017 # meters
-
-    # Calculate meters per pixel at zoom 0
-    # From Mapbox GL JS documentation, meters per pixel at zoom 0 (equator) is approx 78271.517
-    # Or, 2 * pi * 6378137 / 256 (where 256 is tile size)
     METERS_PER_PIXEL_ZOOM_0 = 78271.517
 
-    # Calculate approximate width/height in meters
     width_meters = np.cos(np.radians((min_lat + max_lat) / 2)) * EARTH_CIRCUMFERENCE * (max_lon - min_lon) / 360
     height_meters = EARTH_CIRCUMFERENCE * (max_lat - min_lat) / 360
 
-    # Calculate zoom based on the larger dimension
     if width_meters > height_meters:
         zoom = np.log2(METERS_PER_PIXEL_ZOOM_0 * map_width_px / width_meters)
     else:
         zoom = np.log2(METERS_PER_PIXEL_ZOOM_0 * map_height_px / height_meters)
     
-    # Clamp zoom to a reasonable range
-    return max(0.5, min(zoom, 10)) # Max zoom 10 to prevent over-zooming on small clusters
+    return max(0.5, min(zoom, 10))
 
 def plot_network_pydeck(network_df, optimized_route_ids=[], bbox=None):
     """
@@ -63,12 +53,11 @@ def plot_network_pydeck(network_df, optimized_route_ids=[], bbox=None):
     an optional optimized route, using OpenStreetMap as a base map.
     The map view state is adjusted based on the provided bounding box.
     """
-    # Calculate initial view state based on bbox or network_df mean
     if bbox and bbox != (0,0,0,0):
         view_state = pdk.ViewState(
-            latitude=(bbox[0] + bbox[1]) / 2, # Center lat
-            longitude=(bbox[2] + bbox[3]) / 2, # Center lon
-            zoom=calculate_zoom_level(bbox), # Dynamic zoom based on bbox
+            latitude=(bbox[0] + bbox[1]) / 2,
+            longitude=(bbox[2] + bbox[3]) / 2,
+            zoom=calculate_zoom_level(bbox),
             pitch=45,
         )
     elif not network_df.empty:
@@ -138,26 +127,16 @@ def plot_network_pydeck(network_df, optimized_route_ids=[], bbox=None):
         tooltip={"text": "{name}"}
     )
 
+# This function remains largely the same, but comments highlight its purpose
 def build_truck_segments(simulation_log_df, network_df):
     """
     Transforms simulation log into a DataFrame of travel segments for animation.
+    This DataFrame now contains all log details, which will be used for highlighting.
     """
-    segments = []
-    node_coords_map = network_df.set_index('node_id')[['lat', 'lon']].to_dict('index')
-
-    for index, row in simulation_log_df.iterrows():
-        from_coords = node_coords_map[row['from']]
-        to_coords = node_coords_map[row['to']]
-        
-        segments.append({
-            'truckId': row['truckId'],
-            'type': row['type'],
-            'coordinates': [[from_coords['lon'], from_coords['lat']],
-                     [to_coords['lon'], to_coords['lat']]],
-            'startTime': row['arrival_time_hr'] - row['adjusted_travel_time_hr'],
-            'endTime': row['arrival_time_hr']
-        })
-    return pd.DataFrame(segments)
+    # simulation_core now returns a DataFrame for 'segments', so we don't need to rebuild it here.
+    # The 'emissions_kg', 'carbon_factor', 'traffic_factor', 'weather_factor'
+    # are in the log_df returned by sim_core. We will use the log_df for factor lookups.
+    return simulation_log_df # simulation_core now returns log as DataFrame
 
 def get_positions_at_time(segments_for_animation_df, current_time, network_df):
     """
@@ -174,11 +153,14 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
         
         current_segment = None
         for idx, segment_row in truck_segments.iterrows():
+            # Check if current time is within this segment
             if current_time >= segment_row['startTime'] and current_time < segment_row['endTime']:
                 current_segment = segment_row
                 break
+            # Check if current time is past this segment and this is the latest segment for the truck
             elif current_time >= segment_row['endTime'] and (idx + 1 == len(truck_segments) or current_time < truck_segments.iloc[idx+1]['startTime']):
                 current_segment = segment_row
+                # If segment is completed, truck is at its 'to' node
                 truck_current_positions.append({
                     'id': truck_id,
                     'type': segment_row['type'],
@@ -188,6 +170,7 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
                 break
 
         if current_segment is not None:
+            # Ensure 'coordinates' is treated as a list, not a Series if pandas did something unexpected
             segment_path_coords = current_segment['coordinates'].item() if isinstance(current_segment['coordinates'], pd.Series) else current_segment['coordinates']
 
             from_lon, from_lat = segment_path_coords[0]
@@ -201,7 +184,7 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
 
                 current_lon = from_lon + (to_lon - from_lon) * progress
                 current_lat = from_lat + (to_lat - from_lat) * progress
-            else:
+            else: # Instantaneous movement or start of simulation (if duration is 0)
                 current_lon, current_lat = from_lon, from_lat
             
             if not any(t['id'] == truck_id for t in truck_current_positions):
@@ -212,17 +195,17 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
                     'lon': current_lon
                 })
         else:
-            if current_time < truck_segments['startTime'].min() if not truck_segments.empty else 0:
-                 dc_node_id = network_df[network_df['type'] == 'dc']['node_id'].iloc[0]
-                 start_node_coords = network_df[network_df['node_id'] == dc_node_id].iloc[0]
-                 
-                 truck_current_positions.append({
-                    'id': truck_id,
-                    'type': truck_segments['type'].iloc[0] if not truck_segments.empty else 'EV',
-                    'lat': start_node_coords['lat'],
-                    'lon': start_node_coords['lon']
-                })
-            elif current_time > truck_segments['endTime'].max() if not truck_segments.empty else 0:
+            if current_time < (truck_segments['startTime'].min() if not truck_segments.empty else 0):
+                 dc_nodes = network_df[network_df['type'] == 'dc']
+                 if not dc_nodes.empty:
+                    start_node_coords = dc_nodes.iloc[0]
+                    truck_current_positions.append({
+                        'id': truck_id,
+                        'type': truck_segments['type'].iloc[0] if not truck_segments.empty else 'EV',
+                        'lat': start_node_coords['lat'],
+                        'lon': start_node_coords['lon']
+                    })
+            elif current_time > (truck_segments['endTime'].max() if not truck_segments.empty else 0):
                  final_segment = truck_segments.iloc[-1]
                  final_path_coords = final_segment['coordinates'].item() if isinstance(final_segment['coordinates'], pd.Series) else final_segment['coordinates']
 
@@ -234,3 +217,86 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
                 })
 
     return truck_current_positions
+
+def highlight_impacted_segments(segments_for_animation_df, current_time, trucks_config, log_df_sim): # Updated signature
+    """
+    Generates PyDeck PathLayer data for animated segments,
+    with colors indicating high traffic or high carbon intensity.
+    Now correctly uses segments_for_animation_df for coordinates and log_df_sim for factors.
+    """
+    segment_layers_data = []
+    
+    # Define thresholds for highlighting (these can be adjusted)
+    HIGH_TRAFFIC_THRESHOLD = 1.3
+    HIGH_CARBON_THRESHOLD = 350 # gCO2/kWh
+
+    for truck_config in trucks_config:
+        # Filter segments data for the current truck from segments_for_animation_df
+        truck_segments_data = segments_for_animation_df[segments_for_animation_df['truckId'] == truck_config['id']]
+        
+        for idx, segment_row in truck_segments_data.iterrows():
+            # Find the corresponding log entry for factor information
+            # We match by truckId and the approximate start time of the segment
+            # This assumes that log_df_sim contains corresponding entries for each segment in segments_for_animation_df
+            matching_log_entries = log_df_sim[
+                (log_df_sim['truckId'] == segment_row['truckId']) &
+                (np.isclose(log_df_sim['arrival_time_hr'] - log_df_sim['adjusted_travel_time_hr'], segment_row['startTime'], atol=0.01))
+            ]
+
+            log_entry_for_segment = matching_log_entries.iloc[0] if not matching_log_entries.empty else None
+
+            # Get the path coordinates for this segment from segment_row
+            segment_coords = segment_row['coordinates'].item() if isinstance(segment_row['coordinates'], pd.Series) else segment_row['coordinates']
+
+            is_active_segment = segment_row['startTime'] <= current_time and current_time < segment_row['endTime']
+            
+            segment_color = truck_config['color'] + [200]
+
+            # Apply highlighting based on factor values from log_entry_for_segment
+            if log_entry_for_segment is not None:
+                is_high_carbon = log_entry_for_segment['type'] == 'EV' and log_entry_for_segment['carbon_factor'] > HIGH_CARBON_THRESHOLD
+                is_high_traffic = log_entry_for_segment['traffic_factor'] > HIGH_TRAFFIC_THRESHOLD
+
+                if is_high_carbon:
+                    segment_color = [255, 0, 255, 250] # Magenta for high carbon EV segments
+                elif is_high_traffic:
+                    segment_color = [255, 140, 0, 250] # Orange for high traffic segments
+            
+            opacity = 200 if is_active_segment else 80
+            final_color = segment_color[:-1] + [opacity]
+
+            current_path = []
+            if segment_row['startTime'] <= current_time:
+                if current_time < segment_row['endTime']:
+                    progress = (current_time - segment_row['startTime']) / (segment_row['endTime'] - segment_row['startTime'])
+                    current_lon = segment_coords[0][0] + (segment_coords[1][0] - segment_coords[0][0]) * progress
+                    current_lat = segment_coords[0][1] + (segment_coords[1][1] - segment_coords[0][1]) * progress
+                    current_path = [segment_coords[0], [current_lon, current_lat]]
+                else:
+                    current_path = segment_coords
+            
+            if current_path:
+                factor_info = "N/A"
+                if log_entry_for_segment is not None:
+                     factor_info = f"Traffic: {log_entry_for_segment['traffic_factor']:.2f}x, Carbon: {log_entry_for_segment['carbon_factor']:.2f} gCO2/kWh"
+                
+                segment_layers_data.append({
+                    'path': current_path,
+                    'color': final_color,
+                    'truckId': segment_row['truckId'],
+                    'factor_info': factor_info
+                })
+    
+    if segment_layers_data:
+        return pdk.Layer(
+            'PathLayer',
+            data=segment_layers_data,
+            get_path='path',
+            get_color='color',
+            get_width=8,
+            width_scale=1,
+            width_min_pixels=3,
+            pickable=True,
+            tooltip={"text": "{truckId}\nFactors: {factor_info}"}
+        )
+    return None
