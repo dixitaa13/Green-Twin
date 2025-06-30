@@ -1,0 +1,9 @@
+[theme]
+primaryColor="#EF4444" # A bright red for primary elements
+backgroundColor="#0A0A0A" # Deep black background
+secondaryBackgroundColor="#1A1A1A" # Slightly lighter black for sidebars/panels
+textColor="#FAFAFA" # Off-white for general text
+font="sans serif"
+
+[global]
+disableWatchdogWarning = true

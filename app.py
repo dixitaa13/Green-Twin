@@ -114,7 +114,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.selectbox(
     "Navigate Sections",
-    ("📊 Overview", "🌐 Network & Optimization", "🚚 Simulation & Animation", "⚖️ Scenario Comparison", "⚙️ Configuration", "📜 Raw Logs"), # Added new page
+    ("📊 Overview", "🌐 Network & Optimization", "🚚 Simulation & Animation", "⚖️ Scenario Comparison", "⚙️ Configuration", "📜 Raw Logs"),
     key="main_nav_selector"
 )
 
@@ -326,69 +326,125 @@ elif page == "🚚 Simulation & Animation":
             st.info("No trucks currently moving. Adjust slider or run simulation.")
         st.markdown("---")
 
-        bbox = calculate_bounding_box(network_df)
-        
-        view_state = pdk.ViewState(
-            latitude=(bbox[0] + bbox[1]) / 2,
-            longitude=(bbox[2] + bbox[3]) / 2,
-            zoom=calculate_zoom_level(bbox),
-            pitch=45,
-        )
+        # --- NEW: Map and Legend Layout ---
+        col_map, col_legend = st.columns([0.7, 0.3]) # Adjust column widths as needed
 
-        node_layer = pdk.Layer(
-            'ScatterplotLayer',
-            data=network_df,
-            get_position='[lon, lat]',
-            get_color='[255, 0, 0, 160]' if network_df['type'].iloc[0] == 'dc' else '[255, 100, 100, 160]',
-            get_radius=10000,
-            pickable=True,
-            auto_highlight=True,
-            tooltip={"text": "{name}\n{type}"}
-        )
-
-        truck_color_map = {truck_conf['id']: truck_conf['color'] for truck_conf in st.session_state.trucks_config}
-        
-        truck_layer_data = pd.DataFrame(current_truck_positions)
-        truck_layer = None
-        if not truck_layer_data.empty:
-            truck_layer = pdk.Layer(
-                'ScatterplotLayer',
-                data=truck_layer_data,
-                get_position='[lon, lat]',
-                get_color=lambda d: truck_color_map.get(d['id'], [255, 255, 255, 200]),
-                get_radius=15000,
-                pickable=True,
-                auto_highlight=True,
-                tooltip={"text": "Truck: {id}\nType: {type}"}
+        with col_map:
+            bbox = calculate_bounding_box(network_df)
+            
+            view_state = pdk.ViewState(
+                latitude=(bbox[0] + bbox[1]) / 2,
+                longitude=(bbox[2] + bbox[3]) / 2,
+                zoom=calculate_zoom_level(bbox),
+                pitch=45,
             )
 
-        highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim, re_route_events_df)
+            node_layer = pdk.Layer(
+                'ScatterplotLayer',
+                data=network_df,
+                get_position='[lon, lat]',
+                get_color='[255, 0, 0, 160]' if network_df['type'].iloc[0] == 'dc' else '[255, 100, 100, 160]',
+                get_radius=10000,
+                pickable=True,
+                auto_highlight=True,
+                tooltip={"text": "{name}\n{type}"}
+            )
 
-        osm_tile_layer = pdk.Layer(
-            "BitmapLayer",
-            data=[
-                {
-                    "image": "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    "bounds": [-180, -85.05112878, 180, 85.05112878],
-                }
-            ],
-            id="osm-base-map",
-            opacity=0.8
-        )
+            truck_color_map = {truck_conf['id']: truck_conf['color'] for truck_conf in st.session_state.trucks_config}
+            
+            truck_layer_data = pd.DataFrame(current_truck_positions)
+            truck_layer = None
+            if not truck_layer_data.empty:
+                truck_layer = pdk.Layer(
+                    'ScatterplotLayer',
+                    data=truck_layer_data,
+                    get_position='[lon, lat]',
+                    get_color=lambda d: truck_color_map.get(d['id'], [255, 255, 255, 200]),
+                    get_radius=15000,
+                    pickable=True,
+                    auto_highlight=True,
+                    tooltip={"text": "Truck: {id}\nType: {type}"}
+                )
 
-        all_layers = [osm_tile_layer, node_layer]
-        if highlight_layer:
-            all_layers.append(highlight_layer)
-        if truck_layer:
-            all_layers.append(truck_layer)
+            highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim, re_route_events_df)
 
-        st.pydeck_chart(pdk.Deck(
-            initial_view_state=view_state,
-            layers=all_layers,
-            tooltip={"text": "{name}"}
-        ))
+            osm_tile_layer = pdk.Layer(
+                "BitmapLayer",
+                data=[
+                    {
+                        "image": "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                        "bounds": [-180, -85.05112878, 180, 85.05112878],
+                    }
+                ],
+                id="osm-base-map",
+                opacity=0.8
+            )
 
-        # --- Dynamic Re-route Table (as before) ---
+            all_layers = [osm_tile_layer, node_layer]
+            if highlight_layer:
+                all_layers.append(highlight_layer)
+            if truck_layer:
+                all_layers.append(truck_layer)
+
+            st.pydeck_chart(pdk.Deck(
+                initial_view_state=view_state,
+                layers=all_layers,
+                tooltip={"text": "{name}"}
+            ))
+        
+        with col_legend:
+            st.subheader("Map Legend")
+            st.markdown("""
+            <style>
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .legend-color-box {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+                margin-right: 10px;
+                border: 1px solid #333;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            st.markdown("""
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(255,0,0);"></div>
+                <span>Distribution Center (DC)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(255,100,100);"></div>
+                <span>Store Location</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(34,197,94);"></div>
+                <span>EV Truck Path</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(234,179,8);"></div>
+                <span>Diesel Truck Path</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(255,0,255);"></div>
+                <span>High Carbon EV Segment</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(255,140,0);"></div>
+                <span>High Traffic Segment</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color-box" style="background-color: rgb(0,255,255);"></div>
+                <span>Proposed Re-route Alternative</span>
+            </div>
+            """, unsafe_allow_html=True)
+        # --- END NEW: Map and Legend Layout ---
+
+
+        # --- Dynamic Re-route Table ---
         st.subheader("🔄 Dynamic Re-route Opportunities")
         if not re_route_events_df.empty:
             active_re_route_events = re_route_events_df[re_route_events_df['trigger_time_hr'] <= st.session_state.simulation_time_slider]
@@ -440,45 +496,51 @@ elif page == "🚚 Simulation & Animation":
 
         st.markdown("---") # Separator before final summary
 
-        # --- NEW: Final Simulation Summary Section ---
+        # --- Final Simulation Summary Section ---
         st.subheader("🏁 Final Simulation Summary")
-        if not re_route_events_df.empty:
-            st.markdown("All re-route opportunities detected during this simulation:")
-            final_re_route_summary = []
-            for idx, event in re_route_events_df.iterrows():
-                final_re_route_summary.append({
-                    'Truck': event['truckId'],
-                    'Original Segment': f"{event['original_from']} -> {event['original_to']}",
-                    'Reason': event['reason'],
-                    'Emissions Change (kg CO2)': f"{event['emissions_change_kg']:.2f}",
-                    'Cost Change (USD)': f"{event['cost_change_usd']:.2f}",
-                    'Time Change (hr)': f"{event['time_change_hr']:.2f}"
-                })
-            st.dataframe(pd.DataFrame(final_re_route_summary), use_container_width=True)
+        if st.session_state.simulation_results:
+            if not re_route_events_df.empty:
+                st.markdown("All re-route opportunities detected during this simulation:")
+                final_re_route_summary = []
+                for idx, event in re_route_events_df.iterrows():
+                    final_re_route_summary.append({
+                        'Truck': event['truckId'],
+                        'Original Segment': f"{event['original_from']} -> {event['original_to']}",
+                        'Reason': event['reason'],
+                        'Emissions Change (kg CO2)': f"{event['emissions_change_kg']:.2f}",
+                        'Cost Change (USD)': f"{event['cost_change_usd']:.2f}",
+                        'Time Change (hr)': f"{event['time_change_hr']:.2f}"
+                    })
+                st.dataframe(pd.DataFrame(final_re_route_summary), use_container_width=True)
+            else:
+                st.markdown("No re-route opportunities were detected during this simulation run. Here is the final planned route for each truck:")
+                final_routes_summary = []
+                for truck_id, truck_data in st.session_state.simulation_results['final_truck_states'].items():
+                    truck_segments_log = log_df_sim[log_df_sim['truckId'] == truck_id]
+                    if not truck_segments_log.empty:
+                        visited_nodes = []
+                        for _, row in truck_segments_log.iterrows():
+                            if row['from'] not in visited_nodes:
+                                visited_nodes.append(row['from'])
+                        if truck_segments_log['to'].iloc[-1] not in visited_nodes:
+                            visited_nodes.append(truck_segments_log['to'].iloc[-1])
+                        route_path = " -> ".join(visited_nodes)
+                    else:
+                        route_path = "No segments assigned"
+                    
+                    final_routes_summary.append({
+                        'Truck': truck_id,
+                        'Type': truck_data['type'],
+                        'Final Route': route_path,
+                        'Total Distance (km)': f"{truck_data['total_distance_km']:.2f}",
+                        'Total Time (hr)': f"{truck_data['total_adjusted_time_hr']:.2f}",
+                        'Total Emissions (kg CO2)': f"{truck_data['total_emissions_kg']:.2f}",
+                        'Total Cost (USD)': f"${truck_data['total_cost']:.2f}"
+                    })
+                st.dataframe(pd.DataFrame(final_routes_summary), use_container_width=True)
         else:
-            st.markdown("No re-route opportunities were detected during this simulation run. Here is the final planned route for each truck:")
-            final_routes_summary = []
-            for truck_id, truck_data in st.session_state.simulation_results['final_truck_states'].items():
-                # Get the segments assigned to this truck from the full log
-                truck_segments_log = log_df_sim[log_df_sim['truckId'] == truck_id]
-                if not truck_segments_log.empty:
-                    route_path = " -> ".join(truck_segments_log['from'].unique().tolist() + [truck_segments_log['to'].iloc[-1]])
-                else:
-                    route_path = "No segments assigned"
-                
-                final_routes_summary.append({
-                    'Truck': truck_id,
-                    'Type': truck_data['type'],
-                    'Final Route': route_path,
-                    'Total Distance (km)': f"{truck_data['total_distance_km']:.2f}",
-                    'Total Time (hr)': f"{truck_data['total_adjusted_time_hr']:.2f}",
-                    'Total Emissions (kg CO2)': f"{truck_data['total_emissions_kg']:.2f}",
-                    'Total Cost (USD)': f"${truck_data['total_cost']:.2f}"
-                })
-            st.dataframe(pd.DataFrame(final_routes_summary), use_container_width=True)
+            st.info("Run a simulation to see the final simulation summary.")
 
-    else:
-        st.info(f"Run the simulation for {st.session_state.selected_country} to see the animation and re-route insights.")
 
 elif page == "⚖️ Scenario Comparison":
     st.header("Scenario Comparison: Fleet Optimization & Sustainability")
