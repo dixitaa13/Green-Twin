@@ -11,7 +11,6 @@ from simulation.sim_core import multi_truck_simulation
 from visuals.charts import plot_network_pydeck, get_positions_at_time, calculate_bounding_box, highlight_impacted_segments # highlight_impacted_segments now imported
 
 # --- Function moved from visuals/charts.py to app.py for NameError fix ---
-# This function is used by PyDeck to determine zoom level
 def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
     """
     Estimates a PyDeck zoom level based on a bounding box.
@@ -30,7 +29,7 @@ def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
 
     # Handle single point or very small bounds to avoid division by zero or extreme zoom
     if min_lat == max_lat: max_lat += 0.001
-    if min_lon == max_lon: min_lon += 0.001
+    if min_lon == max_lon: max_lon += 0.001
 
     # Approximate Earth's circumference at equator in meters
     EARTH_CIRCUMFERENCE = 40075017 # meters
@@ -95,6 +94,8 @@ if 'selected_country' not in st.session_state:
     st.session_state.selected_country = full_network_df['country'].unique()[0] if not full_network_df.empty else 'USA'
 if 'scenario_results' not in st.session_state:
     st.session_state.scenario_results = {} # Stores results for comparison scenarios
+if 'scenario_counter' not in st.session_state: # NEW: Counter for unique scenario names
+    st.session_state.scenario_counter = 0
 
 # --- Sidebar Navigation ---
 st.sidebar.title("GreenTwin Dashboard")
@@ -129,7 +130,21 @@ G = create_graph(network_df)
 distance_matrix, node_id_to_index, index_to_node_id = build_distance_matrix(G)
 
 # --- Function to run a simulation (re-usable for scenarios) ---
-def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, demand, trucks_cfg, scenario_name):
+def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, demand, trucks_cfg): # Removed scenario_name from args
+    # NEW: Generate a unique scenario name
+    st.session_state.scenario_counter += 1
+    scenario_name = f"Run {st.session_state.scenario_counter} ({st.session_state.selected_country})"
+
+    # Optional: Append a short fleet summary to the name
+    fleet_summary = []
+    ev_count = sum(1 for t in trucks_cfg if t['type'] == 'EV')
+    diesel_count = sum(1 for t in trucks_cfg if t['type'] == 'Diesel')
+    if ev_count > 0: fleet_summary.append(f"{ev_count} EV")
+    if diesel_count > 0: fleet_summary.append(f"{diesel_count} Diesel")
+    if fleet_summary:
+        scenario_name += f" - ({', '.join(fleet_summary)})"
+
+
     with st.spinner(f"Running simulation for '{scenario_name}'..."):
         sim_results = multi_truck_simulation(
             route,
@@ -246,12 +261,6 @@ elif page == "🌐 Network & Optimization":
                 else:
                     st.success("Optimal route computed!")
     
-    # Store the computed route for scenarios
-    # This should be part of a distinct scenario creation step if you want to compare
-    # routes from different optimization runs, not just fleet configs.
-    # For now, we'll store the *current* route when simulation is run.
-
-
     st.subheader(f"Supply Chain Network Map for {st.session_state.selected_country}")
     if not network_df.empty:
         bbox = calculate_bounding_box(network_df)
@@ -271,15 +280,13 @@ elif page == "🚚 Simulation & Animation":
         if not st.session_state.optimized_route or len(st.session_state.optimized_route) < 2:
             st.warning("Please compute an optimal route with at least two nodes first in the 'Network & Optimization' section.")
         else:
-            # We are now calling run_simulation_and_store
             current_sim_results = run_simulation_and_store(
                 st.session_state.optimized_route,
                 distance_matrix,
                 node_id_to_index,
                 index_to_node_id,
                 demand_map_filtered,
-                st.session_state.trucks_config,
-                f"Current Fleet ({st.session_state.selected_country})" # Name for this scenario
+                st.session_state.trucks_config # No scenario_name here
             )
             st.session_state.simulation_results = current_sim_results
             st.session_state.max_simulation_time = current_sim_results['max_simulation_time']
@@ -358,7 +365,6 @@ elif page == "🚚 Simulation & Animation":
             )
 
         # Get the highlighted segments layer
-        # Correctly pass segments_for_animation (which is sim_results['segments'])
         highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim) # Pass log_df_sim here
 
         osm_tile_layer = pdk.Layer(
