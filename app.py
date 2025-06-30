@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from utils.api_helpers import load_network, create_graph, build_distance_matrix, get_mock_traffic_factor, get_mock_weather_factor, get_mock_carbon_intensity
 from optimization.route_solver import solve_advanced_tsp
 from simulation.sim_core import multi_truck_simulation
-from visuals.charts import plot_network_pydeck, get_positions_at_time, calculate_bounding_box, highlight_impacted_segments # highlight_impacted_segments now imported
+from visuals.charts import plot_network_pydeck, get_positions_at_time, calculate_bounding_box, highlight_impacted_segments
 
 # --- Function moved from visuals/charts.py to app.py for NameError fix ---
 def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
@@ -29,7 +29,7 @@ def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
 
     # Handle single point or very small bounds to avoid division by zero or extreme zoom
     if min_lat == max_lat: max_lat += 0.001
-    if min_lon == max_lon: max_lon += 0.001
+    if min_lon == max_lon: min_lon += 0.001
 
     # Approximate Earth's circumference at equator in meters
     EARTH_CIRCUMFERENCE = 40075017 # meters
@@ -94,7 +94,7 @@ if 'selected_country' not in st.session_state:
     st.session_state.selected_country = full_network_df['country'].unique()[0] if not full_network_df.empty else 'USA'
 if 'scenario_results' not in st.session_state:
     st.session_state.scenario_results = {} # Stores results for comparison scenarios
-if 'scenario_counter' not in st.session_state: # NEW: Counter for unique scenario names
+if 'scenario_counter' not in st.session_state:
     st.session_state.scenario_counter = 0
 
 # --- Sidebar Navigation ---
@@ -130,12 +130,10 @@ G = create_graph(network_df)
 distance_matrix, node_id_to_index, index_to_node_id = build_distance_matrix(G)
 
 # --- Function to run a simulation (re-usable for scenarios) ---
-def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, demand, trucks_cfg): # Removed scenario_name from args
-    # NEW: Generate a unique scenario name
+def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, demand, trucks_cfg):
     st.session_state.scenario_counter += 1
     scenario_name = f"Run {st.session_state.scenario_counter} ({st.session_state.selected_country})"
 
-    # Optional: Append a short fleet summary to the name
     fleet_summary = []
     ev_count = sum(1 for t in trucks_cfg if t['type'] == 'EV')
     diesel_count = sum(1 for t in trucks_cfg if t['type'] == 'Diesel')
@@ -158,21 +156,20 @@ def run_simulation_and_store(route, dist_matrix, node_idx_map, idx_node_map, dem
             get_mock_carbon_intensity
         )
         
-        # Access 'log' key, which is a list of dicts, then convert to DataFrame for sum
         log_df_for_calc = pd.DataFrame(sim_results['log'])
         
-        # Ensure values are always float, even if log is empty
         total_emissions = float(log_df_for_calc["emissions_kg"].sum()) if not log_df_for_calc.empty else 0.0
         total_sim_time = float(sim_results['max_simulation_time']) if sim_results['max_simulation_time'] is not None else 0.0
 
         st.session_state.scenario_results[scenario_name] = {
             'total_emissions_kg': total_emissions,
             'total_sim_time_hr': total_sim_time,
-            'log': sim_results['log'], # Still store raw list for download etc.
+            'log': sim_results['log'],
             'segments': sim_results['segments'],
-            'truck_config': trucks_cfg # Store the config used for this scenario
+            're_route_events': sim_results['re_route_events'],
+            'truck_config': trucks_cfg
         }
-        return sim_results # Return full results for current active view
+        return sim_results
 
 # --- Main Content Area ---
 st.title(page)
@@ -286,7 +283,7 @@ elif page == "🚚 Simulation & Animation":
                 node_id_to_index,
                 index_to_node_id,
                 demand_map_filtered,
-                st.session_state.trucks_config # No scenario_name here
+                st.session_state.trucks_config
             )
             st.session_state.simulation_results = current_sim_results
             st.session_state.max_simulation_time = current_sim_results['max_simulation_time']
@@ -297,6 +294,7 @@ elif page == "🚚 Simulation & Animation":
     if st.session_state.simulation_results and not st.session_state.simulation_results['segments'].empty:
         segments_for_animation = st.session_state.simulation_results['segments']
         log_df_sim = pd.DataFrame(st.session_state.simulation_results['log'])
+        re_route_events_df = pd.DataFrame(st.session_state.simulation_results['re_route_events'])
 
         st.session_state.simulation_time_slider = st.slider(
             "Simulation Time (hours)",
@@ -364,8 +362,7 @@ elif page == "🚚 Simulation & Animation":
                 tooltip={"text": "Truck: {id}\nType: {type}"}
             )
 
-        # Get the highlighted segments layer
-        highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim) # Pass log_df_sim here
+        highlight_layer = highlight_impacted_segments(segments_for_animation, st.session_state.simulation_time_slider, st.session_state.trucks_config, log_df_sim, re_route_events_df)
 
         osm_tile_layer = pdk.Layer(
             "BitmapLayer",
@@ -380,7 +377,7 @@ elif page == "🚚 Simulation & Animation":
         )
 
         all_layers = [osm_tile_layer, node_layer]
-        if highlight_layer: # Add highlight layer first so it's under trucks but above base map
+        if highlight_layer:
             all_layers.append(highlight_layer)
         if truck_layer:
             all_layers.append(truck_layer)
@@ -390,10 +387,100 @@ elif page == "🚚 Simulation & Animation":
             layers=all_layers,
             tooltip={"text": "{name}"}
         ))
-    else:
-        st.info(f"Run the simulation for {st.session_state.selected_country} to see the animation.")
 
-elif page == "⚖️ Scenario Comparison": # NEW PAGE
+        # --- Dynamic Re-route Table (as before) ---
+        st.subheader("🔄 Dynamic Re-route Opportunities")
+        if not re_route_events_df.empty:
+            active_re_route_events = re_route_events_df[re_route_events_df['trigger_time_hr'] <= st.session_state.simulation_time_slider]
+            
+            if not active_re_route_events.empty:
+                st.write("Below are potential re-route opportunities detected up to the current simulation time:")
+                re_route_truck_ids = sorted(active_re_route_events['truckId'].unique().tolist())
+                selected_re_route_truck = st.selectbox("Select Truck to Observe Re-routes", re_route_truck_ids, key="re_route_truck_selector")
+
+                if selected_re_route_truck:
+                    truck_re_routes = active_re_route_events[active_re_route_events['truckId'] == selected_re_route_truck]
+                    
+                    if not truck_re_routes.empty:
+                        for idx, event in truck_re_routes.iterrows():
+                            with st.expander(f"Re-route for {event['truckId']} from {event['original_from']} to {event['original_to']} (Triggered at {event['trigger_time_hr']:.2f} hr)"):
+                                st.markdown(f"**Reason:** {event['reason']}")
+                                st.markdown(f"Original Route Segment: `{event['original_from']} -> {event['original_to']}`")
+                                
+                                re_route_comparison_data = {
+                                    'Metric': ['Emissions (kg CO2)', 'Cost (USD)', 'Time (hr)'],
+                                    'Original Path': [event['original_emissions_kg'], event['original_cost_usd'], event['original_time_hr']],
+                                    'Alternative Path': [event['alternative_emissions_kg'], event['alternative_cost_usd'], event['alternative_time_hr']]
+                                }
+                                comparison_table = pd.DataFrame(re_route_comparison_data).set_index('Metric')
+                                st.table(comparison_table)
+
+                                st.markdown(f"**Impact:**")
+                                if event['emissions_change_kg'] > 0:
+                                    st.success(f"Reduced Emissions by: `{event['emissions_change_kg']:.2f} kg CO2`")
+                                else:
+                                    st.warning(f"Increased Emissions by: `{abs(event['emissions_change_kg']):.2f} kg CO2`")
+
+                                if event['cost_change_usd'] > 0:
+                                    st.warning(f"Increased Cost by: `${event['cost_change_usd']:.2f}`")
+                                else:
+                                    st.success(f"Reduced Cost by: `${abs(event['cost_change_usd']):.2f}`")
+
+                                if event['time_change_hr'] > 0:
+                                    st.warning(f"Increased Time by: `{event['time_change_hr']:.2f} hr`")
+                                else:
+                                    st.success(f"Reduced Time by: `{abs(event['time_change_hr']):.2f} hr`")
+                    else:
+                        st.info(f"No re-route opportunities for {selected_re_route_truck} up to current time.")
+                
+            else:
+                st.info("No re-route opportunities detected yet in the simulation up to current time.")
+        else:
+            st.info("No re-route opportunities detected in this simulation run. Check simulation parameters or data.")
+
+        st.markdown("---") # Separator before final summary
+
+        # --- NEW: Final Simulation Summary Section ---
+        st.subheader("🏁 Final Simulation Summary")
+        if not re_route_events_df.empty:
+            st.markdown("All re-route opportunities detected during this simulation:")
+            final_re_route_summary = []
+            for idx, event in re_route_events_df.iterrows():
+                final_re_route_summary.append({
+                    'Truck': event['truckId'],
+                    'Original Segment': f"{event['original_from']} -> {event['original_to']}",
+                    'Reason': event['reason'],
+                    'Emissions Change (kg CO2)': f"{event['emissions_change_kg']:.2f}",
+                    'Cost Change (USD)': f"{event['cost_change_usd']:.2f}",
+                    'Time Change (hr)': f"{event['time_change_hr']:.2f}"
+                })
+            st.dataframe(pd.DataFrame(final_re_route_summary), use_container_width=True)
+        else:
+            st.markdown("No re-route opportunities were detected during this simulation run. Here is the final planned route for each truck:")
+            final_routes_summary = []
+            for truck_id, truck_data in st.session_state.simulation_results['final_truck_states'].items():
+                # Get the segments assigned to this truck from the full log
+                truck_segments_log = log_df_sim[log_df_sim['truckId'] == truck_id]
+                if not truck_segments_log.empty:
+                    route_path = " -> ".join(truck_segments_log['from'].unique().tolist() + [truck_segments_log['to'].iloc[-1]])
+                else:
+                    route_path = "No segments assigned"
+                
+                final_routes_summary.append({
+                    'Truck': truck_id,
+                    'Type': truck_data['type'],
+                    'Final Route': route_path,
+                    'Total Distance (km)': f"{truck_data['total_distance_km']:.2f}",
+                    'Total Time (hr)': f"{truck_data['total_adjusted_time_hr']:.2f}",
+                    'Total Emissions (kg CO2)': f"{truck_data['total_emissions_kg']:.2f}",
+                    'Total Cost (USD)': f"${truck_data['total_cost']:.2f}"
+                })
+            st.dataframe(pd.DataFrame(final_routes_summary), use_container_width=True)
+
+    else:
+        st.info(f"Run the simulation for {st.session_state.selected_country} to see the animation and re-route insights.")
+
+elif page == "⚖️ Scenario Comparison":
     st.header("Scenario Comparison: Fleet Optimization & Sustainability")
     st.markdown("""
     Compare the overall impact of different fleet configurations or operational strategies on total emissions and simulation time.

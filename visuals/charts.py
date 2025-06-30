@@ -32,7 +32,7 @@ def calculate_zoom_level(bbox, map_width_px=1000, map_height_px=600):
     max_lon += lon_buffer
 
     if min_lat == max_lat: max_lat += 0.001
-    if min_lon == max_lon: max_lon += 0.001
+    if min_lon == max_lon: min_lon += 0.001
 
     EARTH_CIRCUMFERENCE = 40075017 # meters
     METERS_PER_PIXEL_ZOOM_0 = 78271.517
@@ -218,13 +218,14 @@ def get_positions_at_time(segments_for_animation_df, current_time, network_df):
 
     return truck_current_positions
 
-def highlight_impacted_segments(segments_for_animation_df, current_time, trucks_config, log_df_sim): # Updated signature
+def highlight_impacted_segments(segments_for_animation_df, current_time, trucks_config, log_df_sim, re_route_events_df): # Updated signature to accept re_route_events_df
     """
     Generates PyDeck PathLayer data for animated segments,
-    with colors indicating high traffic or high carbon intensity.
-    Now correctly uses segments_for_animation_df for coordinates and log_df_sim for factors.
+    with colors indicating high traffic or high carbon intensity,
+    and also highlights conceptual re-route alternatives.
     """
     segment_layers_data = []
+    re_route_alternative_paths_data = [] # NEW: To store alternative paths for visualization
     
     # Define thresholds for highlighting (these can be adjusted)
     HIGH_TRAFFIC_THRESHOLD = 1.3
@@ -245,7 +246,6 @@ def highlight_impacted_segments(segments_for_animation_df, current_time, trucks_
 
             log_entry_for_segment = matching_log_entries.iloc[0] if not matching_log_entries.empty else None
 
-            # Get the path coordinates for this segment from segment_row
             segment_coords = segment_row['coordinates'].item() if isinstance(segment_row['coordinates'], pd.Series) else segment_row['coordinates']
 
             is_active_segment = segment_row['startTime'] <= current_time and current_time < segment_row['endTime']
@@ -287,16 +287,49 @@ def highlight_impacted_segments(segments_for_animation_df, current_time, trucks_
                     'factor_info': factor_info
                 })
     
+    # --- NEW: Add Re-route Alternative Paths to Visualization ---
+    if not re_route_events_df.empty:
+        for idx, event in re_route_events_df.iterrows():
+            # Only show alternative path if the trigger time is reached
+            if current_time >= event['trigger_time_hr']:
+                re_route_alternative_paths_data.append({
+                    'path': event['alternative_path_coords'],
+                    'color': [0, 255, 255, 200], # Cyan for alternative path
+                    'truckId': event['truckId'],
+                    'info': f"Alternative for {event['original_from']}->{event['original_to']}"
+                })
+                # Optionally, make the original path for this segment more transparent or dashed
+                # This would require finding the original segment in segment_layers_data and modifying its color/opacity
+                # For simplicity, we'll just draw the alternative on top.
+
+    all_layers_to_render = []
     if segment_layers_data:
-        return pdk.Layer(
+        all_layers_to_render.append(pdk.Layer(
             'PathLayer',
             data=segment_layers_data,
             get_path='path',
             get_color='color',
-            get_width=8,
+            get_width=8, # Slightly wider for emphasis
             width_scale=1,
             width_min_pixels=3,
             pickable=True,
             tooltip={"text": "{truckId}\nFactors: {factor_info}"}
-        )
-    return None
+        ))
+    
+    if re_route_alternative_paths_data:
+        all_layers_to_render.append(pdk.Layer(
+            'PathLayer',
+            data=re_route_alternative_paths_data,
+            get_path='path',
+            get_color='color',
+            get_width=10, # Slightly wider to stand out
+            width_scale=1,
+            width_min_pixels=4,
+            pickable=True,
+            tooltip={"text": "{truckId}\nAlternative Route: {info}"}
+        ))
+
+    if all_layers_to_render:
+        # Return a list of layers, which PyDeck.Deck can accept
+        return all_layers_to_render
+    return None # Return None if no segments or re-route paths to display
