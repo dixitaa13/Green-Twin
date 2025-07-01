@@ -1,5 +1,10 @@
-## GreenTwin: Sustainable Logistics Digital Twin Prototype
-This repository contains the prototype for GreenTwin, an AI-driven digital twin and route optimization system focusing on carbon-aware logistics.
+# GreenTwin: Sustainable Logistics Digital Twin Prototype
+
+<img width="1468" alt="Screenshot 2025-07-01 at 11 55 03 PM" src="https://github.com/user-attachments/assets/6a9c368d-90a0-4f52-8f03-81c4cf007180" />
+<img width="1470" alt="Screenshot 2025-07-01 at 11 57 52 PM" src="https://github.com/user-attachments/assets/b464fef2-ac83-4954-81f2-8f83f0f3fcaf" />
+<img width="1470" alt="Screenshot 2025-07-01 at 11 56 10 PM" src="https://github.com/user-attachments/assets/94e14505-346f-40b3-bbb3-b22ce08a444a" />
+<img width="1470" alt="Screenshot 2025-07-01 at 11 56 25 PM" src="https://github.com/user-attachments/assets/4668305d-2e7a-4ec6-8c4f-0f28513c37cc" />
+<img width="1470" alt="Screenshot 2025-07-02 at 12 03 24 AM" src="https://github.com/user-attachments/assets/7ef16f2c-5fe5-400f-b997-5e724ac0829b" />
 
 ### 🚀 Overview
 GreenTwin is an innovative AI-driven digital twin and route optimization system meticulously designed to address the complexities of sustainable logistics. This prototype demonstrates a sophisticated approach to supply chain management by integrating real-time environmental factors with advanced simulation capabilities. Our core goal is to enable businesses to optimize their delivery operations not just for efficiency, but also for minimal carbon footprint across diverse global locations.
@@ -12,6 +17,7 @@ GreenTwin is an innovative AI-driven digital twin and route optimization system 
   3) Map view automatically centers and zooms to the selected country for a more realistic and focused animation.
 
   #### Advanced Route Optimization:
+
 
   1) Employs a sophisticated Traveling Salesperson Problem (TSP) solver (conceptually using techniques similar to Google OR-Tools for optimal pathfinding) to generate highly efficient routes.
   2) Moves beyond naive greedy approaches to provide more realistic and optimized paths.
@@ -127,10 +133,7 @@ This will open the GreenTwin dashboard in your web browser (usually at http://lo
 **- Cost/Profitability Analysis:** Add financial metrics alongside environmental ones.  
 **- User Authentication & Data Persistence:** Implement user logins and save/load scenarios using a database.  
 
-<img width="1468" alt="Screenshot 2025-07-01 at 11 55 03 PM" src="https://github.com/user-attachments/assets/6a9c368d-90a0-4f52-8f03-81c4cf007180" />
-<img width="1470" alt="Screenshot 2025-07-01 at 11 57 52 PM" src="https://github.com/user-attachments/assets/b464fef2-ac83-4954-81f2-8f83f0f3fcaf" />
-<img width="1470" alt="Screenshot 2025-07-01 at 11 56 10 PM" src="https://github.com/user-attachments/assets/94e14505-346f-40b3-bbb3-b22ce08a444a" />
-<img width="1470" alt="Screenshot 2025-07-01 at 11 56 25 PM" src="https://github.com/user-attachments/assets/4668305d-2e7a-4ec6-8c4f-0f28513c37cc" />
+
 
 
 
